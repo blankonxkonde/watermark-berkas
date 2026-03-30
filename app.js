@@ -320,10 +320,27 @@
     return out.length ? out : [" "];
   }
 
+  /**
+   * Jarak vertikal antar baris: mengikuti ukuran font + stroke agar tidak saling timpa.
+   */
+  function measureWatermarkLineHeight(ctx2, fontSize) {
+    const lw = Math.max(1, fontSize * 0.08);
+    const m = ctx2.measureText("Mg");
+    let h = fontSize * 1.42 + lw * 1.6;
+    if (
+      typeof m.actualBoundingBoxAscent === "number" &&
+      typeof m.actualBoundingBoxDescent === "number"
+    ) {
+      h = Math.max(
+        h,
+        m.actualBoundingBoxAscent + m.actualBoundingBoxDescent + lw * 2
+      );
+    }
+    return h;
+  }
+
   function drawWatermarkTiled(ctx2, w, h, text, opacity, fontSize, angleDeg, spacing) {
     const rad = (angleDeg * Math.PI) / 180;
-    const lineHeight = fontSize * 1.22;
-    const pad = fontSize * 0.2;
 
     ctx2.save();
     ctx2.globalAlpha = opacity;
@@ -333,21 +350,27 @@
     ctx2.lineJoin = "round";
     ctx2.lineWidth = Math.max(1, fontSize * 0.08);
 
+    const lineHeight = measureWatermarkLineHeight(ctx2, fontSize);
+    const strokePad = ctx2.lineWidth * 2.2;
+    const edgePad = Math.max(fontSize * 0.12, ctx2.lineWidth * 1.5);
+
     const maxLineWidth = Math.min(
-      w * 0.42,
-      Math.max(fontSize * 10, spacing * 2.4)
+      w * 0.36,
+      Math.max(spacing * 2.5, fontSize * 4.5)
     );
     const lines = wrapTiledTextToLines(ctx2, text, maxLineWidth);
 
     let blockWidth = 0;
     lines.forEach(function (ln) {
-      blockWidth = Math.max(blockWidth, ctx2.measureText(ln).width);
+      const tw = ctx2.measureText(ln).width + strokePad;
+      blockWidth = Math.max(blockWidth, tw);
     });
     const blockHeight = lines.length * lineHeight;
     const step = Math.max(
       spacing,
-      blockWidth + pad * 2,
-      blockHeight + pad * 2
+      blockWidth + edgePad * 2,
+      blockHeight + edgePad * 2,
+      fontSize * 1.8
     );
 
     ctx2.translate(w / 2, h / 2);
@@ -384,7 +407,6 @@
       lines.push(" ");
     }
     const rad = (angleDeg * Math.PI) / 180;
-    const lineHeight = fontSize * 1.25;
     ctx2.save();
     ctx2.globalAlpha = opacity;
     ctx2.font = `${fontSize}px system-ui, sans-serif`;
@@ -392,6 +414,7 @@
     ctx2.textBaseline = "middle";
     ctx2.lineJoin = "round";
     ctx2.lineWidth = Math.max(1, fontSize * 0.08);
+    const lineHeight = measureWatermarkLineHeight(ctx2, fontSize);
     ctx2.translate(w / 2, h / 2);
     ctx2.rotate(rad);
     const totalH = (lines.length - 1) * lineHeight;
