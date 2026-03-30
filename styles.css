@@ -182,11 +182,19 @@ input[type="range"] {
 
 .actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 0.5rem;
   margin-top: 1.1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border);
+}
+
+.download-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  max-width: 100%;
 }
 
 .btn {

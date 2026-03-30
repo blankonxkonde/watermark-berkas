@@ -3,6 +3,8 @@
 
   const MAX_SIDE = 4096;
   const DEBOUNCE_MS = 80;
+  const PDFJS_WORKER =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
   const fileInput = document.getElementById("fileInput");
   const dropzone = document.getElementById("dropzone");
@@ -18,14 +20,20 @@
   const spacingRange = document.getElementById("spacingRange");
   const spacingOut = document.getElementById("spacingOut");
   const spacingField = document.getElementById("spacingField");
-  const downloadPng = document.getElementById("downloadPng");
-  const downloadJpeg = document.getElementById("downloadJpeg");
+  const downloadBtn = document.getElementById("downloadBtn");
+  const downloadHint = document.getElementById("downloadHint");
   const canvas = document.getElementById("preview");
   const previewPlaceholder = document.getElementById("previewPlaceholder");
 
   /** @type {HTMLImageElement | null} */
   let sourceImage = null;
   let objectUrl = null;
+  /** @type {string} */
+  let fileKind = "";
+  /** @type {string} */
+  let sourceMime = "";
+  /** @type {any} */
+  let pdfDocument = null;
   let debounceTimer = null;
 
   const ctx = canvas.getContext("2d");
@@ -45,35 +53,108 @@
     return /^image\/(jpeg|png|webp|gif)$/i.test(file.type);
   }
 
-  function loadFile(file) {
-    if (!file || !isAcceptedImage(file)) {
-      return;
-    }
+  function isPdfFile(file) {
+    return (
+      file.type === "application/pdf" || /\.pdf$/i.test(file.name || "")
+    );
+  }
+
+  function clearImageSource() {
+    sourceImage = null;
     if (objectUrl) {
       URL.revokeObjectURL(objectUrl);
       objectUrl = null;
     }
+  }
+
+  function clearPdfSource() {
+    pdfDocument = null;
+  }
+
+  function loadImageFile(file) {
+    clearPdfSource();
+    clearImageSource();
     objectUrl = URL.createObjectURL(file);
     const img = new Image();
     img.onload = function () {
       sourceImage = img;
+      fileKind = "image";
+      sourceMime = file.type || "image/png";
       fileNameEl.textContent = file.name;
       fileNameEl.hidden = false;
       previewPlaceholder.hidden = true;
-      downloadPng.disabled = false;
-      downloadJpeg.disabled = false;
+      downloadBtn.disabled = false;
+      updateDownloadUi();
       scheduleDraw();
     };
     img.onerror = function () {
-      sourceImage = null;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-        objectUrl = null;
-      }
+      clearImageSource();
+      fileKind = "";
       fileNameEl.textContent = "Gagal memuat gambar.";
       fileNameEl.hidden = false;
+      downloadBtn.disabled = true;
+      updateDownloadUi();
     };
     img.src = objectUrl;
+  }
+
+  function loadPdfFile(file) {
+    clearImageSource();
+    clearPdfSource();
+    fileKind = "";
+    sourceMime = "";
+
+    if (typeof pdfjsLib === "undefined") {
+      fileNameEl.textContent =
+        "Pustaka PDF.js tidak dimuat — periksa koneksi atau izin skrip CDN.";
+      fileNameEl.hidden = false;
+      downloadBtn.disabled = true;
+      updateDownloadUi();
+      return;
+    }
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+
+    const run = file.arrayBuffer().then(function (buf) {
+      return pdfjsLib.getDocument({ data: buf }).promise;
+    });
+
+    run.then(
+      function (doc) {
+        pdfDocument = doc;
+        fileKind = "pdf";
+        sourceMime = "application/pdf";
+        fileNameEl.textContent =
+          file.name + " (" + doc.numPages + " halaman)";
+        fileNameEl.hidden = false;
+        previewPlaceholder.hidden = true;
+        downloadBtn.disabled = false;
+        updateDownloadUi();
+        scheduleDraw();
+      },
+      function () {
+        fileNameEl.textContent = "Gagal membaca PDF.";
+        fileNameEl.hidden = false;
+        downloadBtn.disabled = true;
+        updateDownloadUi();
+      }
+    );
+  }
+
+  function loadFile(file) {
+    if (!file) {
+      return;
+    }
+    if (isPdfFile(file)) {
+      loadPdfFile(file);
+    } else if (isAcceptedImage(file)) {
+      loadImageFile(file);
+    } else {
+      fileNameEl.textContent =
+        "Format tidak didukung. Gunakan gambar (JPEG/PNG/WebP/GIF) atau PDF.";
+      fileNameEl.hidden = false;
+      downloadBtn.disabled = true;
+    }
   }
 
   function scheduleDraw() {
@@ -82,8 +163,85 @@
     }
     debounceTimer = setTimeout(function () {
       debounceTimer = null;
-      draw();
+      drawAsync().catch(function (err) {
+        console.error(err);
+      });
     }, DEBOUNCE_MS);
+  }
+
+  /**
+   * @param {number} pageNum
+   */
+  function renderPdfPageToCanvas(pageNum) {
+    if (!pdfDocument) {
+      return Promise.reject(new Error("No PDF"));
+    }
+    return pdfDocument.getPage(pageNum).then(function (page) {
+      const base = page.getViewport({ scale: 1 });
+      const fitScale = Math.min(
+        MAX_SIDE / base.width,
+        MAX_SIDE / base.height,
+        1
+      );
+      const viewport = page.getViewport({ scale: fitScale });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      const task = page.render({
+        canvasContext: ctx,
+        viewport: viewport,
+      });
+      return task.promise;
+    });
+  }
+
+  function applyWatermarkParams() {
+    const w = canvas.width;
+    const h = canvas.height;
+    const text = watermarkText.value;
+    const mode = watermarkMode.value;
+    const opacity = parseFloat(opacityRange.value);
+    const fontScale = parseFloat(fontScaleRange.value);
+    const angleDeg = parseFloat(angleRange.value);
+    const spacing = parseInt(spacingRange.value, 10);
+    const fontSize = Math.max(10, Math.round(w * fontScale));
+
+    if (mode === "tiled") {
+      drawWatermarkTiled(ctx, w, h, text, opacity, fontSize, angleDeg, spacing);
+    } else {
+      drawWatermarkCenter(ctx, w, h, text, opacity, fontSize, angleDeg);
+    }
+  }
+
+  function drawImageWithWatermark() {
+    if (!sourceImage || !sourceImage.complete) {
+      return;
+    }
+    const sw = sourceImage.naturalWidth;
+    const sh = sourceImage.naturalHeight;
+    const dim = scaleDimensions(sw, sh);
+    canvas.width = dim.width;
+    canvas.height = dim.height;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(sourceImage, 0, 0, dim.width, dim.height);
+    applyWatermarkParams();
+  }
+
+  function drawAsync() {
+    if (fileKind === "pdf" && pdfDocument) {
+      return renderPdfPageToCanvas(1).then(function () {
+        applyWatermarkParams();
+      });
+    }
+    if (fileKind === "image" && sourceImage && sourceImage.complete) {
+      drawImageWithWatermark();
+      return Promise.resolve();
+    }
+    return Promise.resolve();
   }
 
   function drawWatermarkTiled(ctx2, w, h, text, opacity, fontSize, angleDeg, spacing) {
@@ -120,9 +278,12 @@
   }
 
   function drawWatermarkCenter(ctx2, w, h, text, opacity, fontSize, angleDeg) {
-    const lines = text.split(/\r?\n/).map(function (s) {
-      return s.trim();
-    }).filter(Boolean);
+    const lines = text
+      .split(/\r?\n/)
+      .map(function (s) {
+        return s.trim();
+      })
+      .filter(Boolean);
     if (lines.length === 0) {
       lines.push(" ");
     }
@@ -149,72 +310,147 @@
     ctx2.restore();
   }
 
-  function draw() {
-    if (!sourceImage || !sourceImage.complete) {
-      return;
-    }
-    const sw = sourceImage.naturalWidth;
-    const sh = sourceImage.naturalHeight;
-    const dim = scaleDimensions(sw, sh);
-    const w = dim.width;
-    const h = dim.height;
-
-    canvas.width = w;
-    canvas.height = h;
-
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(sourceImage, 0, 0, w, h);
-
-    const text = watermarkText.value;
-    const mode = watermarkMode.value;
-    const opacity = parseFloat(opacityRange.value);
-    const fontScale = parseFloat(fontScaleRange.value);
-    const angleDeg = parseFloat(angleRange.value);
-    const spacing = parseInt(spacingRange.value, 10);
-    const fontSize = Math.max(10, Math.round(w * fontScale));
-
-    if (mode === "tiled") {
-      drawWatermarkTiled(ctx, w, h, text, opacity, fontSize, angleDeg, spacing);
-    } else {
-      drawWatermarkCenter(ctx, w, h, text, opacity, fontSize, angleDeg);
-    }
+  function saveBlob(blob, stamp, ext) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "watermark-" + stamp + "." + ext;
+    a.click();
+    URL.revokeObjectURL(a.href);
   }
 
-  function triggerDownload(mime, quality) {
-    if (!sourceImage) {
-      return;
-    }
-    draw();
+  function downloadImageMatchingMime() {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const name = `watermark-${stamp}.${mime === "image/png" ? "png" : "jpg"}`;
+    const mime = sourceMime || "image/png";
+
+    function done(blob, ext) {
+      if (!blob) {
+        return;
+      }
+      saveBlob(blob, stamp, ext);
+    }
 
     if (mime === "image/jpeg") {
       canvas.toBlob(
-        function (blob) {
-          if (!blob) {
-            return;
-          }
-          const a = document.createElement("a");
-          a.href = URL.createObjectURL(blob);
-          a.download = name;
-          a.click();
-          URL.revokeObjectURL(a.href);
+        function (b) {
+          done(b, "jpg");
         },
-        mime,
-        quality
+        "image/jpeg",
+        0.92
+      );
+    } else if (mime === "image/png") {
+      canvas.toBlob(function (b) {
+        done(b, "png");
+      }, "image/png");
+    } else if (mime === "image/webp") {
+      canvas.toBlob(
+        function (b) {
+          if (b) {
+            done(b, "webp");
+          } else {
+            canvas.toBlob(function (b2) {
+              done(b2, "png");
+            }, "image/png");
+          }
+        },
+        "image/webp",
+        0.92
       );
     } else {
-      canvas.toBlob(function (blob) {
-        if (!blob) {
-          return;
+      canvas.toBlob(function (b) {
+        done(b, "png");
+      }, "image/png");
+    }
+  }
+
+  function downloadPdfAllPages() {
+    if (!pdfDocument) {
+      return;
+    }
+    if (typeof window.jspdf === "undefined" || !window.jspdf.jsPDF) {
+      window.alert("jsPDF tidak dimuat — periksa koneksi atau izin skrip CDN.");
+      return;
+    }
+
+    const jsPDF = window.jspdf.jsPDF;
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const prevLabel = downloadBtn.textContent;
+    downloadBtn.disabled = true;
+    downloadBtn.textContent = "Memproses…";
+
+    const chain = (function loop(i, doc) {
+      if (i > pdfDocument.numPages) {
+        if (doc) {
+          doc.save("watermark-" + stamp + ".pdf");
         }
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = name;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      }, mime);
+        return Promise.resolve();
+      }
+      return renderPdfPageToCanvas(i).then(function () {
+        applyWatermarkParams();
+        const w = canvas.width;
+        const h = canvas.height;
+        const imgData = canvas.toDataURL("image/jpeg", 0.92);
+        let nextDoc = doc;
+        if (!nextDoc) {
+          nextDoc = new jsPDF({
+            unit: "px",
+            format: [w, h],
+            orientation: w > h ? "l" : "p",
+            compress: true,
+          });
+        } else {
+          nextDoc.addPage([w, h], w > h ? "l" : "p");
+        }
+        nextDoc.addImage(imgData, "JPEG", 0, 0, w, h, undefined, "FAST");
+        return loop(i + 1, nextDoc);
+      });
+    })(1, null);
+
+    chain.then(
+      function () {
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = prevLabel;
+      },
+      function (err) {
+        console.error(err);
+        downloadBtn.disabled = false;
+        downloadBtn.textContent = prevLabel;
+        window.alert("Gagal membuat PDF.");
+      }
+    );
+  }
+
+  function triggerDownload() {
+    if (fileKind === "pdf" && pdfDocument) {
+      downloadPdfAllPages();
+      return;
+    }
+    if (fileKind === "image" && sourceImage) {
+      drawImageWithWatermark();
+      downloadImageMatchingMime();
+    }
+  }
+
+  function updateDownloadUi() {
+    if (fileKind === "pdf") {
+      downloadBtn.textContent = "Unduh PDF";
+      downloadHint.hidden = false;
+      downloadHint.textContent =
+        "Keluaran berformat PDF (semua halaman). Isi halaman menjadi gambar, bukan teks yang bisa disalin.";
+    } else if (fileKind === "image") {
+      downloadHint.hidden = true;
+      const mime = sourceMime || "";
+      if (mime === "image/jpeg") {
+        downloadBtn.textContent = "Unduh JPEG";
+      } else if (mime === "image/png") {
+        downloadBtn.textContent = "Unduh PNG";
+      } else if (mime === "image/webp") {
+        downloadBtn.textContent = "Unduh WebP";
+      } else {
+        downloadBtn.textContent = "Unduh PNG";
+      }
+    } else {
+      downloadBtn.textContent = "Unduh hasil";
+      downloadHint.hidden = true;
     }
   }
 
@@ -232,7 +468,6 @@
     spacingField.style.display = tiled ? "" : "none";
   }
 
-  // Events
   fileInput.addEventListener("change", function () {
     const f = fileInput.files && fileInput.files[0];
     if (f) {
@@ -280,11 +515,8 @@
     });
   });
 
-  downloadPng.addEventListener("click", function () {
-    triggerDownload("image/png");
-  });
-  downloadJpeg.addEventListener("click", function () {
-    triggerDownload("image/jpeg", 0.92);
+  downloadBtn.addEventListener("click", function () {
+    triggerDownload();
   });
 
   updateOutputs();

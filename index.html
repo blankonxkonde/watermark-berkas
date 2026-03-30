@@ -3,29 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Watermark Gambar (lokal)</title>
+  <title>Watermark berkas (lokal)</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="app">
     <header class="header">
-      <h1>Watermark gambar</h1>
+      <h1>Watermark berkas</h1>
       <p class="lede">
-        Pemrosesan hanya di perangkat Anda — gambar tidak diunggah ke server mana pun.
+        Pemrosesan hanya di perangkat Anda — berkas tidak diunggah ke server mana pun.
       </p>
     </header>
 
     <main class="main">
-      <section class="panel panel--upload" aria-label="Unggah gambar">
+      <section class="panel panel--upload" aria-label="Unggah berkas">
         <label class="dropzone" id="dropzone">
           <input
             type="file"
             id="fileInput"
-            accept="image/jpeg,image/png,image/webp,image/gif"
+            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,.pdf"
             hidden
           />
-          <span class="dropzone__text">Klik atau seret gambar ke sini</span>
-          <span class="dropzone__hint">JPEG, PNG, WebP, GIF</span>
+          <span class="dropzone__text">Klik atau seret berkas ke sini</span>
+          <span class="dropzone__hint">Gambar (JPEG, PNG, WebP, GIF) atau PDF</span>
         </label>
         <p class="file-name" id="fileName" hidden></p>
       </section>
@@ -69,12 +69,10 @@
         </div>
 
         <div class="actions">
-          <button type="button" class="btn btn--primary" id="downloadPng" disabled>
-            Unduh PNG
+          <button type="button" class="btn btn--primary" id="downloadBtn" disabled>
+            Unduh hasil
           </button>
-          <button type="button" class="btn" id="downloadJpeg" disabled>
-            Unduh JPEG
-          </button>
+          <p class="download-hint" id="downloadHint" hidden></p>
         </div>
       </section>
 
@@ -82,7 +80,7 @@
         <div class="preview-wrap">
           <canvas id="preview" width="800" height="600"></canvas>
           <p class="preview-placeholder" id="previewPlaceholder">
-            Unggah gambar untuk melihat pratinjau
+            Unggah gambar atau PDF untuk melihat pratinjau (PDF: halaman pertama)
           </p>
         </div>
       </section>
@@ -91,10 +89,13 @@
     <footer class="footer">
       <p>
         Watermark mengurangi penyalahgunaan kasual; bukan pengamanan kriptografis.
-        Ekspor dari kanvas biasanya tidak menyertakan metadata EXIF dari file asli.
+        PDF diekspor sebagai halaman raster (teks tidak lagi bisa disalin seperti PDF asli).
+        Ekspor gambar dari kanvas biasanya tidak menyertakan metadata EXIF dari file asli.
       </p>
     </footer>
   </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js" crossorigin="anonymous"></script>
   <script src="app.js" defer></script>
 </body>
 </html>
