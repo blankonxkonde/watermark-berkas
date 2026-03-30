@@ -244,9 +244,87 @@
     return Promise.resolve();
   }
 
+  /**
+   * Pecah satu kata menjadi beberapa fragmen agar lebar per baris <= maxWidth.
+   */
+  function breakWordIntoLines(ctx2, word, maxWidth) {
+    const out = [];
+    let rest = word;
+    while (rest.length > 0) {
+      let lo = 1;
+      let hi = rest.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (ctx2.measureText(rest.slice(0, mid)).width <= maxWidth) {
+          lo = mid;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      if (lo < 1) {
+        lo = 1;
+      }
+      out.push(rest.slice(0, lo));
+      rest = rest.slice(lo);
+    }
+    return out;
+  }
+
+  /**
+   * Bungkus satu paragraf per kata; baris baru di ujung kata (bukan di tengah kata).
+   * Kata lebih panjang dari maxWidth dipecah per potongan yang muat.
+   */
+  function wrapParagraphToLines(ctx2, paragraph, maxWidth) {
+    const words = paragraph.split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = "";
+    words.forEach(function (word) {
+      let chunks = [];
+      if (ctx2.measureText(word).width <= maxWidth) {
+        chunks = [word];
+      } else {
+        chunks = breakWordIntoLines(ctx2, word, maxWidth);
+      }
+      chunks.forEach(function (chunk) {
+        const test = line ? line + " " + chunk : chunk;
+        if (ctx2.measureText(test).width > maxWidth && line) {
+          lines.push(line);
+          line = chunk;
+        } else {
+          line = test;
+        }
+      });
+    });
+    if (line) {
+      lines.push(line);
+    }
+    return lines.length ? lines : [" "];
+  }
+
+  /**
+   * Gabungkan beberapa baris dari textarea; tiap baris diproses sebagai paragraf terpisah lalu digabung.
+   */
+  function wrapTiledTextToLines(ctx2, text, maxWidth) {
+    const raw = text.replace(/\r/g, "");
+    const paragraphs = raw.split(/\n/);
+    const out = [];
+    paragraphs.forEach(function (para) {
+      const p = para.trim();
+      if (!p) {
+        return;
+      }
+      wrapParagraphToLines(ctx2, p, maxWidth).forEach(function (ln) {
+        out.push(ln);
+      });
+    });
+    return out.length ? out : [" "];
+  }
+
   function drawWatermarkTiled(ctx2, w, h, text, opacity, fontSize, angleDeg, spacing) {
-    const line = text.replace(/\r?\n/g, " ").trim() || " ";
     const rad = (angleDeg * Math.PI) / 180;
+    const lineHeight = fontSize * 1.22;
+    const pad = fontSize * 0.2;
+
     ctx2.save();
     ctx2.globalAlpha = opacity;
     ctx2.font = `${fontSize}px system-ui, sans-serif`;
@@ -255,9 +333,22 @@
     ctx2.lineJoin = "round";
     ctx2.lineWidth = Math.max(1, fontSize * 0.08);
 
-    const measure = ctx2.measureText(line);
-    const textW = measure.width;
-    const step = Math.max(spacing, textW * 0.35 + fontSize);
+    const maxLineWidth = Math.min(
+      w * 0.42,
+      Math.max(fontSize * 10, spacing * 2.4)
+    );
+    const lines = wrapTiledTextToLines(ctx2, text, maxLineWidth);
+
+    let blockWidth = 0;
+    lines.forEach(function (ln) {
+      blockWidth = Math.max(blockWidth, ctx2.measureText(ln).width);
+    });
+    const blockHeight = lines.length * lineHeight;
+    const step = Math.max(
+      spacing,
+      blockWidth + pad * 2,
+      blockHeight + pad * 2
+    );
 
     ctx2.translate(w / 2, h / 2);
     ctx2.rotate(rad);
@@ -268,10 +359,15 @@
       for (let j = -n; j <= n; j++) {
         const x = i * step;
         const y = j * step;
-        ctx2.strokeStyle = "#000000";
-        ctx2.fillStyle = "#ffffff";
-        ctx2.strokeText(line, x, y);
-        ctx2.fillText(line, x, y);
+        const totalH = (lines.length - 1) * lineHeight;
+        let yy = y - totalH / 2;
+        lines.forEach(function (ln) {
+          ctx2.strokeStyle = "#000000";
+          ctx2.fillStyle = "#ffffff";
+          ctx2.strokeText(ln, x, yy);
+          ctx2.fillText(ln, x, yy);
+          yy += lineHeight;
+        });
       }
     }
     ctx2.restore();
