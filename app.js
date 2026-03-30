@@ -3,6 +3,9 @@
 
   const MAX_SIDE = 4096;
   const DEBOUNCE_MS = 80;
+  /** JPEG/WebP: mendekati asli (ukuran berkas lebih besar dari 0.92). */
+  const EXPORT_JPEG_QUALITY = 0.98;
+  const EXPORT_WEBP_QUALITY = 0.98;
   function pdfWorkerSrc() {
     try {
       return new URL("vendor/pdf.worker.min.js", window.location.href).href;
@@ -469,7 +472,7 @@
           done(b, "jpg");
         },
         "image/jpeg",
-        0.92
+        EXPORT_JPEG_QUALITY
       );
     } else if (mime === "image/png") {
       canvas.toBlob(function (b) {
@@ -487,7 +490,7 @@
           }
         },
         "image/webp",
-        0.92
+        EXPORT_WEBP_QUALITY
       );
     } else {
       canvas.toBlob(function (b) {
@@ -525,7 +528,7 @@
         applyWatermarkParams();
         const w = canvas.width;
         const h = canvas.height;
-        const imgData = canvas.toDataURL("image/jpeg", 0.92);
+        const imgData = canvas.toDataURL("image/png");
         let nextDoc = doc;
         if (!nextDoc) {
           nextDoc = new jsPDF({
@@ -537,7 +540,7 @@
         } else {
           nextDoc.addPage([w, h], w > h ? "l" : "p");
         }
-        nextDoc.addImage(imgData, "JPEG", 0, 0, w, h, undefined, "FAST");
+        nextDoc.addImage(imgData, "PNG", 0, 0, w, h);
         return loop(i + 1, nextDoc);
       });
     })(1, null);
