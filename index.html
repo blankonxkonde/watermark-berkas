@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Watermark Gambar (lokal)</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <h1>Watermark gambar</h1>
+      <p class="lede">
+        Pemrosesan hanya di perangkat Anda — gambar tidak diunggah ke server mana pun.
+      </p>
+    </header>
+
+    <main class="main">
+      <section class="panel panel--upload" aria-label="Unggah gambar">
+        <label class="dropzone" id="dropzone">
+          <input
+            type="file"
+            id="fileInput"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            hidden
+          />
+          <span class="dropzone__text">Klik atau seret gambar ke sini</span>
+          <span class="dropzone__hint">JPEG, PNG, WebP, GIF</span>
+        </label>
+        <p class="file-name" id="fileName" hidden></p>
+      </section>
+
+      <section class="panel panel--controls" aria-label="Pengaturan watermark">
+        <label class="field">
+          <span class="field__label">Teks watermark</span>
+          <textarea
+            id="watermarkText"
+            rows="3"
+            placeholder="Contoh: Hanya untuk verifikasi PT Contoh — 30/03/2026"
+          ></textarea>
+        </label>
+
+        <label class="field">
+          <span class="field__label">Mode</span>
+          <select id="watermarkMode">
+            <option value="tiled" selected>Berulang (tiled)</option>
+            <option value="center">Satu teks di tengah</option>
+          </select>
+        </label>
+
+        <div class="field field--range">
+          <label for="opacityRange">Opasitas teks: <output id="opacityOut">0.35</output></label>
+          <input type="range" id="opacityRange" min="0.05" max="1" step="0.05" value="0.35" />
+        </div>
+
+        <div class="field field--range">
+          <label for="fontScaleRange">Ukuran font (relatif lebar): <output id="fontScaleOut">4%</output></label>
+          <input type="range" id="fontScaleRange" min="0.015" max="0.12" step="0.005" value="0.04" />
+        </div>
+
+        <div class="field field--range">
+          <label for="angleRange">Sudut rotasi (derajat): <output id="angleOut">-25</output></label>
+          <input type="range" id="angleRange" min="-45" max="45" step="1" value="-25" />
+        </div>
+
+        <div class="field field--range" id="spacingField">
+          <label for="spacingRange">Jarak pola (tiled): <output id="spacingOut">120</output> px</label>
+          <input type="range" id="spacingRange" min="60" max="280" step="10" value="120" />
+        </div>
+
+        <div class="actions">
+          <button type="button" class="btn btn--primary" id="downloadPng" disabled>
+            Unduh PNG
+          </button>
+          <button type="button" class="btn" id="downloadJpeg" disabled>
+            Unduh JPEG
+          </button>
+        </div>
+      </section>
+
+      <section class="panel panel--preview" aria-label="Pratinjau">
+        <div class="preview-wrap">
+          <canvas id="preview" width="800" height="600"></canvas>
+          <p class="preview-placeholder" id="previewPlaceholder">
+            Unggah gambar untuk melihat pratinjau
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>
+        Watermark mengurangi penyalahgunaan kasual; bukan pengamanan kriptografis.
+        Ekspor dari kanvas biasanya tidak menyertakan metadata EXIF dari file asli.
+      </p>
+    </footer>
+  </div>
+  <script src="app.js" defer></script>
+</body>
+</html>
