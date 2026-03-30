@@ -3,8 +3,23 @@
 
   const MAX_SIDE = 4096;
   const DEBOUNCE_MS = 80;
-  const PDFJS_WORKER =
-    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  function pdfWorkerSrc() {
+    try {
+      return new URL("vendor/pdf.worker.min.js", window.location.href).href;
+    } catch (e) {
+      return "vendor/pdf.worker.min.js";
+    }
+  }
+
+  function getJsPDFConstructor() {
+    if (window.jspdf && typeof window.jspdf.jsPDF === "function") {
+      return window.jspdf.jsPDF;
+    }
+    if (typeof window.jsPDF === "function") {
+      return window.jsPDF;
+    }
+    return null;
+  }
 
   const fileInput = document.getElementById("fileInput");
   const dropzone = document.getElementById("dropzone");
@@ -113,7 +128,7 @@
       return;
     }
 
-    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc();
 
     const run = file.arrayBuffer().then(function (buf) {
       return pdfjsLib.getDocument({ data: buf }).promise;
@@ -485,12 +500,15 @@
     if (!pdfDocument) {
       return;
     }
-    if (typeof window.jspdf === "undefined" || !window.jspdf.jsPDF) {
-      window.alert("jsPDF tidak dimuat — periksa koneksi atau izin skrip CDN.");
+    const JsPDF = getJsPDFConstructor();
+    if (!JsPDF) {
+      window.alert(
+        "jsPDF tidak dimuat — pastikan berkas vendor/jspdf.umd.min.js ikut di-deploy (folder vendor)."
+      );
       return;
     }
 
-    const jsPDF = window.jspdf.jsPDF;
+    const jsPDF = JsPDF;
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     const prevLabel = downloadBtn.textContent;
     downloadBtn.disabled = true;
